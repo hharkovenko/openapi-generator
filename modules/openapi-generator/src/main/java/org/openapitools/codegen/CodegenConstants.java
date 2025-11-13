@@ -350,6 +350,9 @@ public class CodegenConstants {
     public static final String SKIP_OPERATION_EXAMPLE = "skipOperationExample";
     public static final String SKIP_OPERATION_EXAMPLE_DESC = "Skip examples defined in operations to avoid out of memory errors.";
 
+    public static final String STRIP_PATH_QUERY_PARAMS = "stripPathQueryParams";
+    public static final String STRIP_PATH_QUERY_PARAMS_DESC = "Strip query parameters from API paths (e.g. '/api/path{?param1,param2}' becomes '/api/path'). When enabled, duplicate paths with different query params will have suffixes added to operation IDs to prevent naming conflicts.";
+
     public static final String STRIP_PACKAGE_NAME = "stripPackageName";
     public static final String STRIP_PACKAGE_NAME_DESC = "Whether to strip leading dot-separated packages from generated model classes";
 

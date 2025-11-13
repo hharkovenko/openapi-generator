@@ -232,6 +232,7 @@ public class DefaultCodegen implements CodegenConfig {
     protected boolean skipOperationExample;
     // sort operations by default
     protected boolean skipSortingOperations = false;
+    protected boolean stripPathQueryParams = false;
 
     protected final static Pattern XML_MIME_PATTERN = Pattern.compile("(?i)application\\/(.*)[+]?xml(;.*)?");
     protected final static Pattern JSON_MIME_PATTERN = Pattern.compile("(?i)application\\/json(;.*)?");
@@ -399,6 +400,7 @@ public class DefaultCodegen implements CodegenConfig {
         convertPropertyToBooleanAndWriteBack(CodegenConstants.DISALLOW_ADDITIONAL_PROPERTIES_IF_NOT_PRESENT, this::setDisallowAdditionalPropertiesIfNotPresent);
         convertPropertyToBooleanAndWriteBack(CodegenConstants.ENUM_UNKNOWN_DEFAULT_CASE, this::setEnumUnknownDefaultCase);
         convertPropertyToBooleanAndWriteBack(CodegenConstants.AUTOSET_CONSTANTS, this::setAutosetConstants);
+        convertPropertyToBooleanAndWriteBack(CodegenConstants.STRIP_PATH_QUERY_PARAMS, this::setStripPathQueryParams);
 
         if (additionalProperties.containsKey(DEFAULT_TO_EMPTY_CONTAINER) && additionalProperties.get(DEFAULT_TO_EMPTY_CONTAINER) instanceof String) {
             parseDefaultToEmptyContainer((String) additionalProperties.get(DEFAULT_TO_EMPTY_CONTAINER));
@@ -1796,6 +1798,9 @@ public class DefaultCodegen implements CodegenConfig {
         // option to change the order of form/body parameter
         cliOptions.add(CliOption.newBoolean(CodegenConstants.PREPEND_FORM_OR_BODY_PARAMETERS,
                 CodegenConstants.PREPEND_FORM_OR_BODY_PARAMETERS_DESC).defaultValue(Boolean.FALSE.toString()));
+        // option to strip query params from paths
+        cliOptions.add(CliOption.newBoolean(CodegenConstants.STRIP_PATH_QUERY_PARAMS,
+                CodegenConstants.STRIP_PATH_QUERY_PARAMS_DESC).defaultValue(Boolean.FALSE.toString()));
 
         // option to change how we process + set the data in the discriminator mapping
         CliOption legacyDiscriminatorBehaviorOpt = CliOption.newBoolean(CodegenConstants.LEGACY_DISCRIMINATOR_BEHAVIOR, CodegenConstants.LEGACY_DISCRIMINATOR_BEHAVIOR_DESC).defaultValue(Boolean.TRUE.toString());
@@ -4666,11 +4671,46 @@ public class DefaultCodegen implements CodegenConfig {
         op.operationIdOriginal = operation.getOperationId();
         op.operationId = getOrGenerateOperationId(operation, path, httpMethod);
 
+        // Handle path with query parameters if stripPathQueryParams is enabled
+        String originalPathWithQueryParams = path;
+        String queryParamsPart = null;
+        if (stripPathQueryParams && path.contains("{?")) {
+            // Extract query parameters from path like "/api/path{?param1,param2}"
+            int queryParamsStart = path.indexOf("{?");
+            int queryParamsEnd = path.indexOf("}", queryParamsStart);
+            if (queryParamsStart >= 0 && queryParamsEnd > queryParamsStart) {
+                queryParamsPart = path.substring(queryParamsStart + 2, queryParamsEnd);
+                path = path.substring(0, queryParamsStart);
+
+                // Append query params info to operation ID to prevent duplicates
+                // Convert query params like "param1,param2" to "Param1Param2"
+                if (op.operationId != null) {
+                    String[] params = queryParamsPart.split(",");
+                    StringBuilder suffix = new StringBuilder();
+                    for (String param : params) {
+                        String trimmed = param.trim();
+                        if (!trimmed.isEmpty()) {
+                            suffix.append(camelize(trimmed));
+                        }
+                    }
+                    if (suffix.length() > 0) {
+                        op.operationId = op.operationId + "With" + suffix.toString();
+                    }
+                }
+            }
+        }
+
         if (isStrictSpecBehavior() && !path.startsWith("/")) {
             // modifies an operation.path to strictly conform to OpenAPI Spec
             op.path = "/" + path;
         } else {
             op.path = path;
+        }
+
+        // Store the extracted query params in vendor extensions for potential use in templates
+        if (queryParamsPart != null) {
+            op.vendorExtensions.put("x-path-query-params", queryParamsPart);
+            op.vendorExtensions.put("x-original-path", originalPathWithQueryParams);
         }
 
         op.summary = escapeText(operation.getSummary());
@@ -6403,6 +6443,14 @@ public class DefaultCodegen implements CodegenConfig {
     @Override
     public void setSkipOperationExample(boolean skipOperationExample) {
         this.skipOperationExample = skipOperationExample;
+    }
+
+    public boolean isStripPathQueryParams() {
+        return stripPathQueryParams;
+    }
+
+    public void setStripPathQueryParams(boolean stripPathQueryParams) {
+        this.stripPathQueryParams = stripPathQueryParams;
     }
 
     @Override
